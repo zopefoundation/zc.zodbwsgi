@@ -308,8 +308,8 @@ Now, if we run the app, the request won't be retried:
 Changes
 =======
 
-0.1 (2010-02-dd)
-----------------
+0.1.0 (2010-02-16)
+------------------
 
 Initial release
 
