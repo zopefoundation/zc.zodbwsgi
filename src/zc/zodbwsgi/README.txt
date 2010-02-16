@@ -1,5 +1,5 @@
-WSGI Middleware for Managing ZODB Database Conections
-=====================================================
+WSGI Middleware for Managing ZODB Database Connections
+======================================================
 
 The zc.zodbwsgi provides middleware for managing connections to a ZODB
 database. It combines several features into a single middleware
