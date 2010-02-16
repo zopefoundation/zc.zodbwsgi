@@ -11,15 +11,23 @@
 # FOR A PARTICULAR PURPOSE.
 #
 ##############################################################################
-name, version = 'zc.', '0'
+name, version = 'zc.zodbwsgi', '0'
 
-install_requires = ['setuptools']
-extras_require = dict(test=['zope.testing'])
+install_requires = ['setuptools', 'repoze.retry', 'ZConfig', 'ZODB3']
+extras_require = dict(
+    test=['zope.testing', 'manuel', 'PasteDeploy', 'webtest'])
 
 entry_points = """
+[paste.filter_app_factory]
+main = zc.zodbwsgi:Factory
 """
 
 from setuptools import setup
+import os
+
+long_description = open(
+    os.path.join(*(['src'] + name.split('.') + ['README.txt']))
+    ).read()
 
 setup(
     author = 'Jim Fulton',
@@ -27,8 +35,8 @@ setup(
     license = 'ZPL 2.1',
 
     name = name, version = version,
-    long_description=open('README.txt').read(),
-    description = open('README.txt').read().strip().split('\n')[0],
+    long_description=long_description,
+    description = long_description.strip().split('\n')[0],
     packages = [name.split('.')[0], name],
     namespace_packages = [name.split('.')[0]],
     package_dir = {'': 'src'},
