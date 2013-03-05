@@ -18,42 +18,50 @@ import ZODB.config
 
 booleans = dict(true=True, false=False)
 
-def Factory(application, default,
+class DatabaseFilter(object):
+
+    def __init__(self,
+            application,
+            default,
             configuration,
             initializer=None,
             key=None,
             transaction_management=None,
-            transaction_key=None,
-            retry=None,
-            max_memory_retry_buffer_size=1<<20,
-            ):
-    db = ZODB.config.databaseFromString(configuration)
+            transaction_key=None,):
 
-    initializer = initializer or default.get('initializer')
-    if initializer:
-        module, expr = initializer.split(':', 1)
-        if module:
-            d = __import__(module, {}, {}, ['*']).__dict__
-        else:
-            d={}
-        initializer = eval(expr, d)
-        initializer(db)
+        self.application = application
+        self.database = ZODB.config.databaseFromString(configuration)
 
-    key = key or default.get('key', 'zodb.connection')
+        initializer = initializer or default.get('initializer')
+        if initializer:
+            module, expr = initializer.split(':', 1)
+            if module:
+                d = __import__(module, {}, {}, ['*']).__dict__
+            else:
+                d={}
+            initializer = eval(expr, d)
+            initializer(self.database)
 
-    transaction_management = booleans[
-        transaction_management or default.get(
-            'transaction_management', 'true').lower()]
+        self.key = key or default.get('key', 'zodb.connection')
 
-    if transaction_management:
-        transaction_key = transaction_key or default.get(
-            'transaction_key', 'transaction.manager')
-        def dbapp(environ, start_response):
-            tm = environ[transaction_key] = transaction.TransactionManager()
-            conn = environ[key] = db.open(tm)
+        self.transaction_management = booleans[
+            transaction_management or default.get(
+                'transaction_management', 'true').lower()]
+
+        self.transaction_key = transaction_key or default.get(
+                'transaction_key', 'transaction.manager')
+
+        self.demostorage_management = booleans[
+            transaction_management or default.get(
+                'transaction_management', 'true').lower()]
+
+    def __call__(self, environ, start_response):
+        if self.transaction_management:
+            tm = environ[self.transaction_key] = transaction.TransactionManager()
+            conn = environ[self.key] = self.database.open(tm)
             try:
                 try:
-                    result = application(environ, start_response)
+                    result = self.application(environ, start_response)
                 except:
                     tm.get().abort()
                     raise
@@ -62,22 +70,37 @@ def Factory(application, default,
                 return result
             finally:
                 conn.close()
-                del environ[transaction_key]
-                del environ[key]
+                del environ[self.transaction_key]
+                del environ[self.key]
 
-    else:
-        def dbapp(environ, start_response):
-            conn = environ[key] = db.open()
+        else:
+            conn = environ[self.key] = self.database.open()
             try:
-                return application(environ, start_response)
+                return self.application(environ, start_response)
             finally:
                 conn.close()
-                del environ[key]
+                del environ[self.key]
 
+def make_filter(app,
+        default,
+        configuration,
+        initializer=None,
+        key=None,
+        transaction_management=None,
+        transaction_key=None,
+        retry=None,
+        max_memory_retry_buffer_size=1<<20,):
+    db_app =  DatabaseFilter(app,
+        default,
+        configuration,
+        initializer=initializer,
+        key=key,
+        transaction_management=transaction_management,
+        transaction_key=transaction_key)
     retry = int(retry or default.get('retry', '3'))
     if retry > 0:
-        dbapp = repoze.retry.Retry(dbapp, tries=retry+1)
-    dbapp.database = db
-
-    return dbapp
+        retry_app = repoze.retry.Retry(db_app, tries=retry+1)
+        retry_app.database = db_app.database
+        return retry_app
+    return db_app
 
