@@ -19,7 +19,7 @@ extras_require = dict(
 
 entry_points = """
 [paste.filter_app_factory]
-main = zc.zodbwsgi:Factory
+main = zc.zodbwsgi:make_filter
 """
 
 from setuptools import setup
