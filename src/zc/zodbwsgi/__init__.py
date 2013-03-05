@@ -27,9 +27,7 @@ class DatabaseFilter(object):
             initializer=None,
             key=None,
             transaction_management=None,
-            transaction_key=None,
-            demostorage_management=None,
-            demostorage_key=None):
+            transaction_key=None,):
 
         self.application = application
         self.database = ZODB.config.databaseFromString(configuration)
