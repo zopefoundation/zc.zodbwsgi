@@ -458,7 +458,7 @@ returned.
 Changes
 =======
 
-0.2.0 (unreleased)
+0.2.0 (2012-03-06)
 ------------------
 
 - Add hooks to manage (push/pop) underlying demostorage based on headers.
