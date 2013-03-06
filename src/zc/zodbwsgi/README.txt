@@ -458,6 +458,11 @@ returned.
 Changes
 =======
 
+0.2.1 (2012-03-06)
+------------------
+
+- Fix reference to a file that was renamed.
+
 0.2.0 (2012-03-06)
 ------------------
 

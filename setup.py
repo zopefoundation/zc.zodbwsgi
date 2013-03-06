@@ -11,7 +11,7 @@
 # FOR A PARTICULAR PURPOSE.
 #
 ##############################################################################
-name, version = 'zc.zodbwsgi', '0.2.0'
+name, version = 'zc.zodbwsgi', '0.2.1'
 
 install_requires = ['setuptools', 'repoze.retry', 'ZConfig', 'ZODB3']
 extras_require = dict(
