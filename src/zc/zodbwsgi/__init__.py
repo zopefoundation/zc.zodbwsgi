@@ -62,17 +62,12 @@ class DatabaseFilter(object):
         header = (demostorage_manage_header or
                 default.get('demostorage_manage_header'))
         if header is not None:
-            if [1
-                for d in self.database.databases.values()
-                if not isinstance(d._storage, ZODB.DemoStorage.DemoStorage)
-                ]:
-                raise UserError(
-                    "Attempting to activate demostorage hooks when "
-                    "one of the storages is not a DemoStorage")
-            else:
-                self.demostorage_manage_header = header.replace('-', '_')
-        else:
-            self.demostorage_manage_header = None
+            for d in self.database.databases.values():
+                if not isinstance(d.storage, ZODB.DemoStorage.DemoStorage):
+                    raise UserError(
+                        "Attempting to activate demostorage hooks when "
+                        "one of the storages is not a DemoStorage")
+        self.demostorage_manage_header = header and header.replace('-', '_')
 
     def __call__(self, environ, start_response):
         if self.demostorage_manage_header is not None:
