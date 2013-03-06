@@ -14,7 +14,10 @@
 
 import repoze.retry
 import transaction
+import ZODB.DemoStorage
 import ZODB.config
+from ZODB.DB import DB
+from zope.exceptions.interfaces import UserError
 
 booleans = dict(true=True, false=False)
 
@@ -27,7 +30,8 @@ class DatabaseFilter(object):
             initializer=None,
             key=None,
             transaction_management=None,
-            transaction_key=None,):
+            transaction_key=None,
+            demostorage_manage_header=None):
 
         self.application = application
         self.database = ZODB.config.databaseFromString(configuration)
@@ -55,7 +59,38 @@ class DatabaseFilter(object):
             transaction_management or default.get(
                 'transaction_management', 'true').lower()]
 
+        header = (demostorage_manage_header or
+                default.get('demostorage_manage_header'))
+        if header is not None:
+            for d in self.database.databases.values():
+                if not isinstance(d.storage, ZODB.DemoStorage.DemoStorage):
+                    raise UserError(
+                        "Attempting to activate demostorage hooks when "
+                        "one of the storages is not a DemoStorage")
+        self.demostorage_manage_header = header and header.replace('-', '_')
+
     def __call__(self, environ, start_response):
+        if self.demostorage_manage_header is not None:
+            # XXX See issue #3 regarding current implementation and Jim's
+            # suggestions::
+            #
+            #     https://github.com/zopefoundation/zc.zodbwsgi/issues/3
+
+            action = environ.get('HTTP_' + self.demostorage_manage_header)
+            if action == 'push':
+                databases = {}
+                for name, db in self.database.databases.items():
+                    DB(db.storage.push(),
+                       databases=databases,
+                       database_name=name)
+                self.database = databases[self.database.database_name]
+            elif action == 'pop':
+                databases = {}
+                for name, db in self.database.databases.items():
+                    DB(db.storage.pop(),
+                       databases=databases,
+                       database_name=name)
+                self.database = databases[self.database.database_name]
         if self.transaction_management:
             tm = environ[self.transaction_key] = transaction.TransactionManager()
             conn = environ[self.key] = self.database.open(tm)
@@ -89,14 +124,16 @@ def make_filter(app,
         transaction_management=None,
         transaction_key=None,
         retry=None,
-        max_memory_retry_buffer_size=1<<20,):
+        max_memory_retry_buffer_size=1<<20,
+        demostorage_manage_header=None):
     db_app =  DatabaseFilter(app,
         default,
         configuration,
         initializer=initializer,
         key=key,
         transaction_management=transaction_management,
-        transaction_key=transaction_key)
+        transaction_key=transaction_key,
+        demostorage_manage_header=demostorage_manage_header)
     retry = int(retry or default.get('retry', '3'))
     if retry > 0:
         retry_app = repoze.retry.Retry(db_app, tries=retry+1)

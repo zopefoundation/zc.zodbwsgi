@@ -52,6 +52,18 @@ retry
 
    Note that when retry is not "0", request bodies will be buffered.
 
+demostorage_manage_header
+   An optional entry that controls whether the filter will support push/pop
+   support for the underlying demostorage.
+
+   If a value is provided, it'll check for that header in the request. If found
+   and its value is "push" or "pop" it'll perform the relevant operation.
+
+   Note that the push/pop action is performed _before_ the route inside the
+   application is invoked.
+
+   Also note that this only works if the underlying storage is a DemoStorage.
+
 Let's look at some examples.
 
 First we define an demonstration "application" that we can pass to our
@@ -305,8 +317,152 @@ Now, if we run the app, the request won't be retried:
     <200 OK text/html body="{'x': 1}">
 
 
+demostorage_manage_header
+-------------------------
+
+  ::
+
+   [app:main]
+   paste.app_factory = zc.zodbwsgi.tests:demo_app
+   filter-with = zodb
+
+   [filter:zodb]
+   use = egg:zc.zodbwsgi
+   configuration =
+      <zodb>
+        <demostorage>
+        </demostorage>
+      </zodb>
+
+   key = connection
+   transaction_key = manager
+   demostorage_manage_header = X-FOO
+
+  .. -> src
+
+    >>> open('paste.ini', 'w').write(src)
+    >>> app = paste.deploy.loadapp('config:'+os.path.abspath('paste.ini'))
+    >>> testapp = webtest.TestApp(app)
+    >>> testapp.get('/inc')
+    <200 OK text/html body="{'x': 1}">
+
+    >>> testapp.get('/', {}, headers={'X-FOO': 'push'})
+    <200 OK text/html body="{'x': 1}">
+
+    >>> testapp.get('/inc')
+    <200 OK text/html body="{'x': 2}">
+
+    >>> testapp.get('/', {}, {'X-FOO': 'pop'})
+    <200 OK text/html body="{'x': 1}">
+
+This also works with multiple dbs.
+
+  ::
+
+    class demo_app:
+        def __init__(self, default):
+            pass
+        def __call__(self, environ, start_response):
+            start_response('200 OK', [('content-type', 'text/html')])
+            path = environ['PATH_INFO']
+            root_one = environ['connection'].get_connection('one').root()
+            root_two = environ['connection'].get_connection('two').root()
+            if path == '/inc':
+                root_one['x'] = root_one.get('x', 0) + 1
+                root_two['y'] = root_two.get('y', 0) + 1
+                environ['manager'].get().note('path: %r' % path)
+
+            data = {'one': root_one,
+                    'two': root_two}
+
+            return [repr(data)]
+
+  .. -> src
+
+   >>> exec(src, zc.zodbwsgi.tests.__dict__)
+
+  ::
+
+   [app:main]
+   paste.app_factory = zc.zodbwsgi.tests:demo_app
+   filter-with = zodb
+
+   [filter:zodb]
+   use = egg:zc.zodbwsgi
+   configuration =
+      <zodb one>
+        <demostorage>
+        </demostorage>
+      </zodb>
+      <zodb two>
+        <demostorage>
+        </demostorage>
+      </zodb>
+
+   key = connection
+   transaction_key = manager
+   demostorage_manage_header = X-FOO
+
+  .. -> src
+
+    >>> open('paste.ini', 'w').write(src)
+    >>> app = paste.deploy.loadapp('config:'+os.path.abspath('paste.ini'))
+    >>> testapp = webtest.TestApp(app)
+    >>> testapp.get('/inc').body
+    "{'two': {'y': 1}, 'one': {'x': 1}}"
+
+    >>> testapp.get('/inc', {}, {'X-FOO': 'push'}).body
+    "{'two': {'y': 2}, 'one': {'x': 2}}"
+
+    >>> testapp.get('/', {}, {'X-FOO': 'pop'}).body
+    "{'two': {'y': 1}, 'one': {'x': 1}}"
+
+
+If the storage of any of the databases is not a demostorage, an error is
+returned.
+
+  ::
+
+   [app:main]
+   paste.app_factory = zc.zodbwsgi.tests:demo_app
+   filter-with = zodb
+
+   [filter:zodb]
+   use = egg:zc.zodbwsgi
+   configuration =
+      <zodb one>
+        <demostorage>
+        </demostorage>
+      </zodb>
+      <zodb two>
+        <filestorage>
+          path /tmp/Data.fs
+        </filestorage>
+      </zodb>
+
+   key = connection
+   transaction_key = manager
+   demostorage_manage_header = foo
+
+  .. -> src
+
+    >>> open('paste.ini', 'w').write(src)
+    >>> app = paste.deploy.loadapp('config:'+os.path.abspath('paste.ini'))
+    ... #doctest: +NORMALIZE_WHITESPACE
+    Traceback (most recent call last):
+      ...
+    UserError: Attempting to activate demostorage hooks when one of the
+    storages is not a DemoStorage
+
+
 Changes
 =======
+
+0.2.0 (unreleased)
+------------------
+
+- Add hooks to manage (push/pop) underlying demostorage based on headers.
+- Refactor filter to use instance attributes instead of a closure.
 
 0.1.0 (2010-02-16)
 ------------------
