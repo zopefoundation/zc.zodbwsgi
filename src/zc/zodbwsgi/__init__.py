@@ -71,6 +71,11 @@ class DatabaseFilter(object):
 
     def __call__(self, environ, start_response):
         if self.demostorage_manage_header is not None:
+            # XXX See issue #3 regarding current implementation and Jim's
+            # suggestions::
+            #
+            #     https://github.com/zopefoundation/zc.zodbwsgi/issues/3
+
             action = environ.get('HTTP_' + self.demostorage_manage_header)
             if action == 'push':
                 databases = {}
