@@ -15,8 +15,9 @@
 import repoze.retry
 import transaction
 import ZODB.DemoStorage
-from ZODB.DB import DB
 import ZODB.config
+from ZODB.DB import DB
+from zope.exceptions.interfaces import UserError
 
 booleans = dict(true=True, false=False)
 
@@ -30,7 +31,7 @@ class DatabaseFilter(object):
             key=None,
             transaction_management=None,
             transaction_key=None,
-            demostorage_manage_prefix=None):
+            demostorage_manage_header=None):
 
         self.application = application
         self.database = ZODB.config.databaseFromString(configuration)
@@ -58,25 +59,35 @@ class DatabaseFilter(object):
             transaction_management or default.get(
                 'transaction_management', 'true').lower()]
 
-        self.demostorage_prefix = None
-        if isinstance(self.database.storage, ZODB.DemoStorage.DemoStorage):
-            self.demostorage_prefix = (demostorage_manage_prefix or
-                default.get('demostorage_manage_prefix'))
-
+        header = (demostorage_manage_header or
+                default.get('demostorage_manage_header'))
+        if header is not None:
+            if [1
+                for d in self.database.databases.values()
+                if not isinstance(d._storage, ZODB.DemoStorage.DemoStorage)
+                ]:
+                raise UserError(
+                    "Attempting to activate demostorage hooks when "
+                    "one of the storages is not a DemoStorage")
+            else:
+                self.demostorage_manage_header = header.replace('-', '_')
+        else:
+            self.demostorage_manage_header = None
 
     def __call__(self, environ, start_response):
-        if self.demostorage_prefix is not None:
-            if ('%s.push' % self.demostorage_prefix) in environ:
+        if self.demostorage_manage_header is not None:
+            action = environ.get('HTTP_' + self.demostorage_manage_header)
+            if action == 'push':
                 databases = {}
                 for name, db in self.database.databases.items():
-                    DB(self.database.storage.push(),
+                    DB(db.storage.push(),
                        databases=databases,
                        database_name=name)
                 self.database = databases[self.database.database_name]
-            elif ('%s.pop' % self.demostorage_prefix) in environ:
+            elif action == 'pop':
                 databases = {}
                 for name, db in self.database.databases.items():
-                    DB(self.database.storage.pop(),
+                    DB(db.storage.pop(),
                        databases=databases,
                        database_name=name)
                 self.database = databases[self.database.database_name]
@@ -114,7 +125,7 @@ def make_filter(app,
         transaction_key=None,
         retry=None,
         max_memory_retry_buffer_size=1<<20,
-        demostorage_manage_prefix=None):
+        demostorage_manage_header=None):
     db_app =  DatabaseFilter(app,
         default,
         configuration,
@@ -122,7 +133,7 @@ def make_filter(app,
         key=key,
         transaction_management=transaction_management,
         transaction_key=transaction_key,
-        demostorage_manage_prefix=demostorage_manage_prefix)
+        demostorage_manage_header=demostorage_manage_header)
     retry = int(retry or default.get('retry', '3'))
     if retry > 0:
         retry_app = repoze.retry.Retry(db_app, tries=retry+1)
