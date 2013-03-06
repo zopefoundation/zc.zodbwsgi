@@ -52,6 +52,15 @@ retry
 
    Note that when retry is not "0", request bodies will be buffered.
 
+demostorage_manage_prefix
+   An optional entry that controls whether the filter will support push/pop
+   support for the underlying demostorage.
+
+   If a value is provided, it'll check for the header '<prefix>.push' and
+   '<prefix>.pop' to determine the action to be taken.
+
+   Note that this only works if the underlying storage is a DemoStorage.
+
 Let's look at some examples.
 
 First we define an demonstration "application" that we can pass to our
@@ -303,6 +312,47 @@ Now, if we run the app, the request won't be retried:
     >>> testapp = webtest.TestApp(app)
     >>> testapp.get('/inc')
     <200 OK text/html body="{'x': 1}">
+
+
+demostorage_manage_prefix
+-------------------------
+
+  ::
+
+   [app:main]
+   paste.app_factory = zc.zodbwsgi.tests:demo_app
+   filter-with = zodb
+
+   [filter:zodb]
+   use = egg:zc.zodbwsgi
+   configuration =
+      <zodb hello>
+        <demostorage>
+        </demostorage>
+      </zodb>
+
+   key = connection
+   transaction_key = manager
+   demostorage_manage_prefix = foo
+
+  .. -> src
+
+    >>> open('paste.ini', 'w').write(src)
+    >>> app = paste.deploy.loadapp('config:'+os.path.abspath('paste.ini'))
+    >>> testapp = webtest.TestApp(app)
+    >>> testapp.get('/inc')
+    <200 OK text/html body="{'x': 1}">
+
+    >>> testapp.get('/', extra_environ={'foo.push': 1})
+    <200 OK text/html body="{'x': 1}">
+
+    >>> testapp.get('/inc')
+    <200 OK text/html body="{'x': 2}">
+
+    >>> testapp.get('/', extra_environ={'foo.pop': 1})
+    <200 OK text/html body="{'x': 1}">
+
+
 
 
 Changes

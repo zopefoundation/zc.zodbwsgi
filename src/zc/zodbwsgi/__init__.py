@@ -14,6 +14,8 @@
 
 import repoze.retry
 import transaction
+import ZODB.DemoStorage
+from ZODB.DB import DB
 import ZODB.config
 
 booleans = dict(true=True, false=False)
@@ -27,7 +29,8 @@ class DatabaseFilter(object):
             initializer=None,
             key=None,
             transaction_management=None,
-            transaction_key=None,):
+            transaction_key=None,
+            demostorage_manage_prefix=None):
 
         self.application = application
         self.database = ZODB.config.databaseFromString(configuration)
@@ -55,7 +58,28 @@ class DatabaseFilter(object):
             transaction_management or default.get(
                 'transaction_management', 'true').lower()]
 
+        self.demostorage_prefix = None
+        if isinstance(self.database.storage, ZODB.DemoStorage.DemoStorage):
+            self.demostorage_prefix = (demostorage_manage_prefix or
+                default.get('demostorage_manage_prefix'))
+
+
     def __call__(self, environ, start_response):
+        if self.demostorage_prefix is not None:
+            if ('%s.push' % self.demostorage_prefix) in environ:
+                databases = {}
+                for name, db in self.database.databases.items():
+                    DB(self.database.storage.push(),
+                       databases=databases,
+                       database_name=name)
+                self.database = databases[self.database.database_name]
+            elif ('%s.pop' % self.demostorage_prefix) in environ:
+                databases = {}
+                for name, db in self.database.databases.items():
+                    DB(self.database.storage.pop(),
+                       databases=databases,
+                       database_name=name)
+                self.database = databases[self.database.database_name]
         if self.transaction_management:
             tm = environ[self.transaction_key] = transaction.TransactionManager()
             conn = environ[self.key] = self.database.open(tm)
@@ -89,14 +113,16 @@ def make_filter(app,
         transaction_management=None,
         transaction_key=None,
         retry=None,
-        max_memory_retry_buffer_size=1<<20,):
+        max_memory_retry_buffer_size=1<<20,
+        demostorage_manage_prefix=None):
     db_app =  DatabaseFilter(app,
         default,
         configuration,
         initializer=initializer,
         key=key,
         transaction_management=transaction_management,
-        transaction_key=transaction_key)
+        transaction_key=transaction_key,
+        demostorage_manage_prefix=demostorage_manage_prefix)
     retry = int(retry or default.get('retry', '3'))
     if retry > 0:
         retry_app = repoze.retry.Retry(db_app, tries=retry+1)
