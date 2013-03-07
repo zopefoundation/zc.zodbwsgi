@@ -57,10 +57,9 @@ demostorage_manage_header
    support for the underlying demostorage.
 
    If a value is provided, it'll check for that header in the request. If found
-   and its value is "push" or "pop" it'll perform the relevant operation.
-
-   Note that the push/pop action is performed _before_ the route inside the
-   application is invoked.
+   and its value is "push" or "pop" it'll perform the relevant operation. The
+   middleware will return a response indicating the action taken _without_
+   processing the rest of the pipeline.
 
    Also note that this only works if the underlying storage is a DemoStorage.
 
@@ -320,6 +319,9 @@ Now, if we run the app, the request won't be retried:
 demostorage_manage_header
 -------------------------
 
+Providing an value for this options enables hooks that allow one to push/pop
+the underlying demostorage.
+
   ::
 
    [app:main]
@@ -346,13 +348,19 @@ demostorage_manage_header
     >>> testapp.get('/inc')
     <200 OK text/html body="{'x': 1}">
 
-    >>> testapp.get('/', {}, headers={'X-FOO': 'push'})
-    <200 OK text/html body="{'x': 1}">
+If the push or pop header is provided, the middleware returns a response
+immediately without sending it to the end of the pipeline.
+
+    >>> testapp.get('/', {}, headers={'X-FOO': 'push'}).body
+    'Demostorage pushed\n'
 
     >>> testapp.get('/inc')
     <200 OK text/html body="{'x': 2}">
 
-    >>> testapp.get('/', {}, {'X-FOO': 'pop'})
+    >>> testapp.get('/', {}, {'X-FOO': 'pop'}).body
+    'Demostorage popped\n'
+
+    >>> testapp.get('/')
     <200 OK text/html body="{'x': 1}">
 
 This also works with multiple dbs.
@@ -411,10 +419,16 @@ This also works with multiple dbs.
     >>> testapp.get('/inc').body
     "{'two': {'y': 1}, 'one': {'x': 1}}"
 
-    >>> testapp.get('/inc', {}, {'X-FOO': 'push'}).body
+    >>> testapp.get('/', {}, {'X-FOO': 'push'}).body
+    'Demostorage pushed\n'
+
+    >>> testapp.get('/inc').body
     "{'two': {'y': 2}, 'one': {'x': 2}}"
 
     >>> testapp.get('/', {}, {'X-FOO': 'pop'}).body
+    'Demostorage popped\n'
+
+    >>> testapp.get('/').body
     "{'two': {'y': 1}, 'one': {'x': 1}}"
 
 
@@ -457,6 +471,13 @@ returned.
 
 Changes
 =======
+
+0.3.0 (2012-03-07)
+------------------
+
+- Using the demostorage hook now returns a response immediately without
+  processing the rest of the pipeline. Makes use of this feature less
+  confusing.
 
 0.2.1 (2012-03-06)
 ------------------

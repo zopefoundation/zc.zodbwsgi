@@ -77,6 +77,8 @@ class DatabaseFilter(object):
             #     https://github.com/zopefoundation/zc.zodbwsgi/issues/3
 
             action = environ.get('HTTP_' + self.demostorage_manage_header)
+            status = '200 OK'
+            response_headers = [('Content-type', 'text/plain')]
             if action == 'push':
                 databases = {}
                 for name, db in self.database.databases.items():
@@ -84,6 +86,8 @@ class DatabaseFilter(object):
                        databases=databases,
                        database_name=name)
                 self.database = databases[self.database.database_name]
+                start_response(status, response_headers)
+                return ['Demostorage pushed\n']
             elif action == 'pop':
                 databases = {}
                 for name, db in self.database.databases.items():
@@ -91,6 +95,8 @@ class DatabaseFilter(object):
                        databases=databases,
                        database_name=name)
                 self.database = databases[self.database.database_name]
+                start_response(status, response_headers)
+                return ['Demostorage popped\n']
         if self.transaction_management:
             tm = environ[self.transaction_key] = transaction.TransactionManager()
             conn = environ[self.key] = self.database.open(tm)
