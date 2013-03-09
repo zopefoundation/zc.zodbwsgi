@@ -98,9 +98,6 @@ factory::
             elif path == "/tm":
                 tm = environ["transaction.manager"]
                 return ["thread tm: " + str(tm is transaction.manager)]
-            elif path == "/doom":
-                root["z"] = 1000
-                transaction.doom()
             return [repr(root)]
 
 .. -> src
@@ -155,8 +152,6 @@ root object:
     >>> conn.sync()
     >>> conn.root()
     {'x': 1}
-
-    >>> testapp.get("/doom")
 
 We can supply a database initialization function using the initializer
 option.  Let's define an initialization function::
