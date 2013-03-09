@@ -34,7 +34,7 @@ key
 
 transaction_management
    An optional flag (either "true" or "false") indicating whether the
-   middleware manages transactions
+   middleware manages transactions.
 
    Transaction management is enabled by default.
 
@@ -43,6 +43,14 @@ transaction_key
 
    This defaults to "transaction.manager". The key will only be
    present if transaction management is enabled.
+
+thread_transaction_manager
+   An option flag (either "true" or "false") indicating whether the
+   middleware will use a thread-aware transaction mananger (e.g.,
+   thread.TransactionManager).
+
+   Defaults to True.
+
 
 retry
    An optional retry count
@@ -88,7 +96,12 @@ factory::
             elif path == '/conflict':
                 print >>stdout, 'Conflict!'
                 raise ZODB.POSException.ConflictError
-
+            elif path == "/tm":
+                tm = environ["transaction.manager"]
+                return ["thread tm: " + str(tm is transaction.manager)]
+            elif path == "/doom":
+                root["z"] = 1000
+                transaction.doom()
             return [repr(root)]
 
 .. -> src
@@ -143,6 +156,8 @@ root object:
     >>> conn.sync()
     >>> conn.root()
     {'x': 1}
+
+    >>> testapp.get("/doom")
 
 We can supply a database initialization function using the initializer
 option.  Let's define an initialization function::
@@ -269,6 +284,57 @@ Now, if we run the app, the request won't be retried:
     ... except ZODB.POSException.ConflictError: pass
     ... else: print 'oops'
     Conflict!
+
+
+By default, the middleware uses a thread-aware transaction manager::
+
+   [app:main]
+   paste.app_factory = zc.zodbwsgi.tests:demo_app
+   filter-with = zodb
+
+   [filter:zodb]
+   use = egg:zc.zodbwsgi
+   configuration =
+      <zodb>
+        <demostorage>
+        </demostorage>
+      </zodb>
+   initializer = zc.zodbwsgi.tests:initialize_demo_db
+
+.. -> src
+
+    >>> app = paste.deploy.loadapp('config:'+os.path.abspath('paste.ini'))
+    >>> testapp = webtest.TestApp(app)
+    >>> print testapp.get("/tm").body
+    thread tm: True
+    >>> print testapp.get("/tm").body
+    thread tm: True
+
+
+This can be controlled via the ``thread_transaction_manager`` key::
+
+   [app:main]
+   paste.app_factory = zc.zodbwsgi.tests:demo_app
+   filter-with = zodb
+
+   [filter:zodb]
+   use = egg:zc.zodbwsgi
+   configuration =
+      <zodb>
+        <demostorage>
+        </demostorage>
+      </zodb>
+   initializer = zc.zodbwsgi.tests:initialize_demo_db
+   thread_transaction_manager = false
+
+.. -> src
+
+    >>> open('paste.ini', 'w').write(src)
+    >>> app = paste.deploy.loadapp('config:'+os.path.abspath('paste.ini'))
+    >>> testapp = webtest.TestApp(app)
+    >>> print testapp.get("/tm").body
+    thread tm: False
+
 
 .. Other tests of corner cases:
 
@@ -457,6 +523,12 @@ returned.
 
 Changes
 =======
+
+0.3.0 (unreleased)
+------------------
+
+- Add an option to use a thread-aware transaction manager, and make it
+  the default.
 
 0.2.0 (2012-03-06)
 ------------------
