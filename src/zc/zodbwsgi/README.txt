@@ -539,19 +539,19 @@ Changes
 - Add an option to use a thread-aware transaction manager, and make it
   the default.
 
-0.3.0 (2012-03-07)
+0.3.0 (2013-03-07)
 ------------------
 
 - Using the demostorage hook now returns a response immediately without
   processing the rest of the pipeline. Makes use of this feature less
   confusing.
 
-0.2.1 (2012-03-06)
+0.2.1 (2013-03-06)
 ------------------
 
 - Fix reference to a file that was renamed.
 
-0.2.0 (2012-03-06)
+0.2.0 (2013-03-06)
 ------------------
 
 - Add hooks to manage (push/pop) underlying demostorage based on headers.
