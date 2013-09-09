@@ -542,7 +542,7 @@ returned.
 Changes
 =======
 
-0.4.0 (unreleased)
+1.0.0 (unreleased)
 ------------------
 
 - Add an option to use a thread-aware transaction manager, and make it
