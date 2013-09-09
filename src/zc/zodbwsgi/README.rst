@@ -12,7 +12,8 @@ component:
 - optional request retry on conflict errors (using repoze.retry)
 - optionaly limiting the number of simultaneous database connections
 - applications can take over connection and transaction management on
-  a case-by-case basis.
+  a case-by-case basis, for example to support the occasional
+  long-running request.
 
 It is designed to work with paste deployment and provides a
 "filter_app_factory" entry point, named "main".
@@ -689,6 +690,88 @@ with an alternative semaphore implementation, like gevent's.)
     ...     Semaphore.return_value.acquire.assert_called_with()
     ...     Semaphore.return_value.release.assert_called_with()
 
+Escaping connection and transaction management
+----------------------------------------------
+
+Normally, having connections and transactions managed for you is
+convenient. Sometimes, however, you want to take over transaction
+management yourself.
+
+If you close ``environ['zodb.connection']``, then it won't be closed
+by ``zc.zodbwsgi``, nor will ``zc.zodbwsgi`` commit or abort the
+transaction it started.  If you're using ``max_connections``, closing
+``environ['zodb.connection']`` will make the connection available fro
+other requests immediately, rather than waiting for your request to
+complete.
+
+.. test
+
+    >>> import sys
+    >>> def app(environ, start_response):
+    ...     print 'about to close'
+    ...     environ['zodb.connection'].onCloseCallback(
+    ...         lambda : sys.stdout.write('close\n'))
+    ...     environ['zodb.connection'].close()
+    ...     print 'closed'
+    ...     start_response('200 OK', [])
+    ...     return ''
+
+    >>> with mock.patch('transaction.manager') as manager:
+    ...     with mock.patch("zc.zodbwsgi.Semaphore") as Semaphore:
+    ...             f = zc.zodbwsgi.make_filter(
+    ...                 app, {},
+    ...                 '<zodb>\n<mappingstorage>\n</mappingstorage>\n</zodb>',
+    ...                 max_connections='99', retry=0)
+    ...             Semaphore.assert_called_with(99)
+    ...             Semaphore.return_value.acquire.side_effect = (
+    ...                 lambda : sys.stdout.write('acquire\n'))
+    ...             Semaphore.return_value.release.side_effect = (
+    ...                 lambda : sys.stdout.write('release\n'))
+    ...             manager.begin.side_effect = (
+    ...                 lambda : sys.stdout.write('begin\n'))
+    ...             manager.commit.side_effect = (
+    ...                 lambda *a: sys.stdout.write('commit\n'))
+    ...             manager.abort.side_effect = (
+    ...                 lambda *a: sys.stdout.write('abort\n'))
+    ...             _ = webtest.TestApp(f).get('/')
+    acquire
+    begin
+    about to close
+    close
+    closed
+    release
+
+Dealing with the occasional long-running requests
+-------------------------------------------------
+
+Database connections can be pretty expensive resources, especially if
+they have large database caches.  For this reason, when using large
+caches, it's common to limit the number of application threads, to
+limit the number of connections used.  If your application is compute
+bound, you generally want to use one application thread per process
+and a process per processor on the host machine.
+
+If your application itself makes network requests (e.g calling
+external service APIs), so it's network/server bound rather than
+compute bound, you should increase the number of application threads
+and decrease the size of the connection caches to compensate.
+
+If your application is mostly compute bound, but sometimes calls
+external services, you can take a hybrid approach:
+
+- Increase the number of application threads.
+- Set max_connections to 1.
+- In the parts of your application that make external service calls:
+
+  - Close ``environ['zodb.connection']``, committing first, if
+    necessary.
+  - Make your service calls.
+  - Open and close ZODB connections yourself when you need to use the
+    database.
+
+    If you're using ZEO or relstorage, you might want to create
+    separate database clients for use in these calls, configured with
+    smaller caches.
 
 Changes
 =======
@@ -699,10 +782,14 @@ Changes
 - Add an option to use a thread-aware transaction manager, and make it
   the default.
 
-- Added support for long-running requests:
+- Added support for occasional long-running requests:
 
   - You can limit the number of database connections with
     max_connections.
+
+  - You can take over connection and transaction management to release
+    connections while blocking (typically when calling external
+    services).
 
 
 0.3.0 (2013-03-07)

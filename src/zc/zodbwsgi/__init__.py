@@ -122,11 +122,27 @@ class DatabaseFilter(object):
             try:
                 self.acquire()
                 conn = environ[self.key] = self.database.open(tm)
+                closed = []
+
+                @conn.onCloseCallback
+                def on_close():
+                    closed.append(1)
+
                 try:
-                    with tm:
-                        return self.application(environ, start_response)
+                    try:
+                        tm.begin()
+                        result = self.application(environ, start_response)
+                    except:
+                        if not closed:
+                            tm.abort()
+                        raise
+                    else:
+                        if not closed:
+                            tm.commit()
+                        return result
                 finally:
-                    conn.close()
+                    if not closed:
+                        conn.close()
                     del environ[self.transaction_key]
                     del environ[self.key]
             finally:
