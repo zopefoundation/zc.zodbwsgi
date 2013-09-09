@@ -15,7 +15,9 @@ name, version = 'zc.zodbwsgi', '0.3.0'
 
 install_requires = ['setuptools', 'repoze.retry', 'ZConfig', 'ZODB3']
 extras_require = dict(
-    test=['zope.testing', 'manuel', 'PasteDeploy', 'webtest'])
+    test=[
+        'zope.testing', 'manuel', 'PasteDeploy', 'webtest', 'zc.thread',
+        'mock'])
 
 entry_points = """
 [paste.filter_app_factory]

@@ -10,6 +10,9 @@ component:
 - connection management
 - optional transaction management
 - optional request retry on conflict errors (using repoze.retry)
+- optionaly limiting the number of simultaneous database connections
+- applications can take over connection and transaction management on
+  a case-by-case basis.
 
 It is designed to work with paste deployment and provides a
 "filter_app_factory" entry point, named "main".
@@ -79,6 +82,9 @@ demostorage_manage_header
    processing the rest of the pipeline.
 
    Also note that this only works if the underlying storage is a DemoStorage.
+
+max_connections
+   Maximum number of simultaneous 
 
 .. contents::
 
@@ -554,6 +560,135 @@ returned.
     UserError: Attempting to activate demostorage hooks when one of the
     storages is not a DemoStorage
 
+Limiting the number of connections
+----------------------------------
+
+If you're using a threaded server, one that dedicates a thread to each
+active request, you can limit the number of simultaneous database
+connections by specifying the number with the max_connections option.
+
+(This only works for threaded servers because it uses threaded
+semaphores. In the future, support for other locking mechanisms, such
+as gevent Semaphores, may be added. In the mean time, if you're
+inclined to monkey patch, you can replace ``zc.zodbwsgi.Semaphore``
+with an alternative semaphore implementation, like gevent's.)
+
+.. test
+
+    >>> import threading, zc.thread, time
+    >>> events = []
+    >>> def app(environ, start_response):
+    ...     event = threading.Event()
+    ...     events.append(event)
+    ...     event.wait(30)
+    ...     start_response('200 OK', [])
+    ...     return ''
+
+    >>> f = zc.zodbwsgi.make_filter(
+    ...     app, {}, '<zodb>\n<mappingstorage>\n</mappingstorage>\n</zodb>',
+    ...     max_connections='1', retry=0)
+
+    Now, we've said to only allow 1 connection. If we make requests in
+    threads, only one will be active at a time.
+
+    >>> @zc.thread.Thread
+    ... def t1():
+    ...     webtest.TestApp(f).get('/')
+
+    >>> @zc.thread.Thread
+    ... def t2():
+    ...     webtest.TestApp(f).get('/')
+
+    >>> @zc.thread.Thread
+    ... def t3():
+    ...     webtest.TestApp(f).get('/')
+
+    >>> time.sleep(.01)
+
+    Even though there are 3 requests out standing, only 1 has made it
+    to the app:
+
+    >>> len(events)
+    1
+
+    If we complete one, the next will be handled:
+
+    >>> events.pop().set()
+    >>> time.sleep(.01)
+
+    >>> len(events)
+    1
+
+ and so on:
+
+    >>> events.pop().set()
+    >>> time.sleep(.01)
+
+    >>> len(events)
+    1
+
+    >>> events.pop().set()
+    >>> time.sleep(.01)
+
+    >>> len(events)
+    0
+
+    >>> t1.join()
+    >>> t2.join()
+    >>> t3.join()
+
+ Check the no-transaction case:
+
+    >>> f = zc.zodbwsgi.make_filter(
+    ...     app, {}, '<zodb>\n<mappingstorage>\n</mappingstorage>\n</zodb>',
+    ...     max_connections='1', retry=0, transaction_management='False')
+
+    >>> @zc.thread.Thread
+    ... def t1():
+    ...     webtest.TestApp(f).get('/')
+
+    >>> @zc.thread.Thread
+    ... def t2():
+    ...     webtest.TestApp(f).get('/')
+
+    >>> @zc.thread.Thread
+    ... def t3():
+    ...     webtest.TestApp(f).get('/')
+
+    >>> time.sleep(.01)
+    >>> len(events)
+    1
+    >>> events.pop().set()
+    >>> time.sleep(.01)
+    >>> len(events)
+    1
+    >>> events.pop().set()
+    >>> time.sleep(.01)
+    >>> len(events)
+    1
+    >>> events.pop().set()
+    >>> time.sleep(.01)
+    >>> len(events)
+    0
+    >>> t1.join()
+    >>> t2.join()
+    >>> t3.join()
+
+ Verify that we can monkey patch:
+
+    >>> def app(environ, start_response):
+    ...     start_response('200 OK', [])
+    ...     return ''
+    >>> import mock
+    >>> with mock.patch("zc.zodbwsgi.Semaphore") as Semaphore:
+    ...     f = zc.zodbwsgi.make_filter(
+    ...         app, {}, '<zodb>\n<mappingstorage>\n</mappingstorage>\n</zodb>',
+    ...         max_connections='99', retry=0, transaction_management='False')
+    ...     Semaphore.assert_called_with(99)
+    ...     _ = webtest.TestApp(f).get('/')
+    ...     Semaphore.return_value.acquire.assert_called_with()
+    ...     Semaphore.return_value.release.assert_called_with()
+
 
 Changes
 =======
@@ -563,6 +698,12 @@ Changes
 
 - Add an option to use a thread-aware transaction manager, and make it
   the default.
+
+- Added support for long-running requests:
+
+  - You can limit the number of database connections with
+    max_connections.
+
 
 0.3.0 (2013-03-07)
 ------------------
