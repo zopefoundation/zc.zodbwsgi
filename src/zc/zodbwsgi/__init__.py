@@ -19,7 +19,7 @@ import ZODB.config
 from ZODB.DB import DB
 from zope.exceptions.interfaces import UserError
 
-booleans = dict(true=True, false=False)
+to_bool = lambda val: {"true": True, "false": False}[val.lower()]
 
 class DatabaseFilter(object):
 
@@ -31,6 +31,7 @@ class DatabaseFilter(object):
             key=None,
             transaction_management=None,
             transaction_key=None,
+            thread_transaction_manager=None,
             demostorage_manage_header=None):
 
         self.application = application
@@ -48,16 +49,20 @@ class DatabaseFilter(object):
 
         self.key = key or default.get('key', 'zodb.connection')
 
-        self.transaction_management = booleans[
-            transaction_management or default.get(
-                'transaction_management', 'true').lower()]
+        self.transaction_management = to_bool(
+                transaction_management or
+                default.get('transaction_management', 'true'))
 
         self.transaction_key = transaction_key or default.get(
                 'transaction_key', 'transaction.manager')
 
-        self.demostorage_management = booleans[
-            transaction_management or default.get(
-                'transaction_management', 'true').lower()]
+        self.thread_transaction_manager = to_bool(
+                thread_transaction_manager or
+                default.get("thread_transaction_manager", "true"))
+
+        self.demostorage_management = to_bool(
+                transaction_management or
+                default.get('transaction_management', 'true'))
 
         header = (demostorage_manage_header or
                 default.get('demostorage_manage_header'))
@@ -98,17 +103,15 @@ class DatabaseFilter(object):
                 start_response(status, response_headers)
                 return ['Demostorage popped\n']
         if self.transaction_management:
-            tm = environ[self.transaction_key] = transaction.TransactionManager()
+            if self.thread_transaction_manager:
+                tm = transaction.manager
+            else:
+                tm = transaction.TransactionManager()
+            environ[self.transaction_key] = tm
             conn = environ[self.key] = self.database.open(tm)
             try:
-                try:
-                    result = self.application(environ, start_response)
-                except:
-                    tm.get().abort()
-                    raise
-                else:
-                    tm.get().commit()
-                return result
+                with tm:
+                    return self.application(environ, start_response)
             finally:
                 conn.close()
                 del environ[self.transaction_key]
@@ -129,6 +132,7 @@ def make_filter(app,
         key=None,
         transaction_management=None,
         transaction_key=None,
+        thread_transaction_manager=None,
         retry=None,
         max_memory_retry_buffer_size=1<<20,
         demostorage_manage_header=None):
@@ -139,6 +143,7 @@ def make_filter(app,
         key=key,
         transaction_management=transaction_management,
         transaction_key=transaction_key,
+        thread_transaction_manager=thread_transaction_manager,
         demostorage_manage_header=demostorage_manage_header)
     retry = int(retry or default.get('retry', '3'))
     if retry > 0:
