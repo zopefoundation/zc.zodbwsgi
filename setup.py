@@ -26,7 +26,7 @@ from setuptools import setup
 import os
 
 long_description = open(
-    os.path.join(*(['src'] + name.split('.') + ['README.txt']))
+    os.path.join(*(['src'] + name.split('.') + ['README.rst']))
     ).read()
 
 setup(

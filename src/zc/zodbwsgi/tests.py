@@ -21,7 +21,7 @@ def test_suite():
     return unittest.TestSuite((
         manuel.testing.TestSuite(
             manuel.doctest.Manuel() + manuel.capture.Manuel(),
-            'README.txt',
+            'README.rst',
             setUp=zope.testing.setupstack.setUpDirectory,
             tearDown=zope.testing.setupstack.tearDown,
             )
