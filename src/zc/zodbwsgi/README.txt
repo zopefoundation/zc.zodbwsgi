@@ -49,8 +49,17 @@ thread_transaction_manager
    middleware will use a thread-aware transaction mananger (e.g.,
    thread.TransactionManager).
 
-   Defaults to True.
+   Using a thread-aware transaction mananger is convenient if you're
+   using a server that always a request in the same thread, such as
+   servers thaat use thread pools, or that create threads for each
+   request.
 
+   If you're using a server, such as gevent, that handles multiple
+   requests in the same thread or a server that might handle the same
+   request in different threads, then you should set this option to
+   false.
+
+   Defaults to True.
 
 retry
    An optional retry count
