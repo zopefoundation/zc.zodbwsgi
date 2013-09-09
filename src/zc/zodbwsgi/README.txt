@@ -80,6 +80,11 @@ demostorage_manage_header
 
    Also note that this only works if the underlying storage is a DemoStorage.
 
+.. contents::
+
+Basic usage
+-----------
+
 Let's look at some examples.
 
 First we define an demonstration "application" that we can pass to our
@@ -162,6 +167,9 @@ root object:
     >>> conn.root()
     {'x': 1}
 
+Database initialization
+-----------------------
+
 We can supply a database initialization function using the initializer
 option.  Let's define an initialization function::
 
@@ -211,6 +219,9 @@ initializer:
     >>> app.database.history(conn.root()._p_oid, 1)[0]['description']
     "path: '/inc'"
 
+Disabling transaction management
+--------------------------------
+
 Sometimes, you may not want the middleware to control transactions.
 You might do this if your application used multiple databases,
 including non-ZODB databases [#multidb]_.  You can suppress
@@ -242,6 +253,9 @@ transaction_management option::
 
     >>> app.database.history('\0'*8, 1)[0]['description']
     ''
+
+Suppressing request retry
+-------------------------
 
 By default, zc.zodbwsgi adds ``repoze.retry`` middleware to retry requests
 when there are conflict errors:
@@ -288,6 +302,8 @@ Now, if we run the app, the request won't be retried:
     ... else: print 'oops'
     Conflict!
 
+Using non-thread-aware (non thread-local) transaction managers
+--------------------------------------------------------------
 
 By default, the middleware uses a thread-aware transaction manager::
 
