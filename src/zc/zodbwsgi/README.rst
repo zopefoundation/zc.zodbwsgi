@@ -706,6 +706,8 @@ complete.
 
 .. test
 
+  Normal (no error):
+
     >>> import sys
     >>> def app(environ, start_response):
     ...     print 'about to close'
@@ -737,6 +739,40 @@ complete.
     about to close
     release
     closed
+
+  Error:
+
+    >>> def app(environ, start_response):
+    ...     print 'about to close'
+    ...     environ['zodb.connection'].close()
+    ...     print 'closed'
+    ...     raise ValueError('Fail')
+
+    >>> with mock.patch('transaction.manager') as manager:
+    ...     with mock.patch("zc.zodbwsgi.Semaphore") as Semaphore:
+    ...             f = zc.zodbwsgi.make_filter(
+    ...                 app, {},
+    ...                 '<zodb>\n<mappingstorage>\n</mappingstorage>\n</zodb>',
+    ...                 max_connections='99', retry=0)
+    ...             Semaphore.assert_called_with(99)
+    ...             Semaphore.return_value.acquire.side_effect = (
+    ...                 lambda : sys.stdout.write('acquire\n'))
+    ...             Semaphore.return_value.release.side_effect = (
+    ...                 lambda : sys.stdout.write('release\n'))
+    ...             manager.begin.side_effect = (
+    ...                 lambda : sys.stdout.write('begin\n'))
+    ...             manager.commit.side_effect = (
+    ...                 lambda *a: sys.stdout.write('commit\n'))
+    ...             manager.abort.side_effect = (
+    ...                 lambda *a: sys.stdout.write('abort\n'))
+    ...             try: webtest.TestApp(f).get('/')
+    ...             except ValueError: pass
+    acquire
+    begin
+    about to close
+    release
+    closed
+
 
 Dealing with the occasional long-running requests
 -------------------------------------------------
