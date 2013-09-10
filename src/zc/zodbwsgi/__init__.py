@@ -127,6 +127,7 @@ class DatabaseFilter(object):
                 @conn.onCloseCallback
                 def on_close():
                     closed.append(1)
+                    self.release()
 
                 try:
                     try:
@@ -146,7 +147,8 @@ class DatabaseFilter(object):
                     del environ[self.transaction_key]
                     del environ[self.key]
             finally:
-                self.release()
+                if not closed:
+                    self.release()
 
         else:
             try:

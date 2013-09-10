@@ -709,8 +709,6 @@ complete.
     >>> import sys
     >>> def app(environ, start_response):
     ...     print 'about to close'
-    ...     environ['zodb.connection'].onCloseCallback(
-    ...         lambda : sys.stdout.write('close\n'))
     ...     environ['zodb.connection'].close()
     ...     print 'closed'
     ...     start_response('200 OK', [])
@@ -737,9 +735,8 @@ complete.
     acquire
     begin
     about to close
-    close
-    closed
     release
+    closed
 
 Dealing with the occasional long-running requests
 -------------------------------------------------
