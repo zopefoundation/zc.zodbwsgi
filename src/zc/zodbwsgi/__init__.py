@@ -113,23 +113,28 @@ class DatabaseFilter(object):
                 start_response(status, response_headers)
                 return ['Demostorage popped\n']
 
-        if self.transaction_management:
-            if self.thread_transaction_manager:
-                tm = transaction.manager
+
+        closed = []
+        try:
+            self.acquire()
+            if self.transaction_management:
+                if self.thread_transaction_manager:
+                    tm = transaction.manager
+                else:
+                    tm = transaction.TransactionManager()
+                environ[self.transaction_key] = tm
             else:
-                tm = transaction.TransactionManager()
-            environ[self.transaction_key] = tm
+                tm = None
+
+            conn = environ[self.key] = self.database.open(tm)
+
+            @conn.onCloseCallback
+            def on_close():
+                closed.append(1)
+                self.release()
+
             try:
-                self.acquire()
-                conn = environ[self.key] = self.database.open(tm)
-                closed = []
-
-                @conn.onCloseCallback
-                def on_close():
-                    closed.append(1)
-                    self.release()
-
-                try:
+                if tm:
                     try:
                         tm.begin()
                         result = self.application(environ, start_response)
@@ -141,25 +146,18 @@ class DatabaseFilter(object):
                         if not closed:
                             tm.commit()
                         return result
-                finally:
-                    if not closed:
-                        conn.close()
-                    del environ[self.transaction_key]
-                    del environ[self.key]
+
+                else:
+                    return self.application(environ, start_response)
+
             finally:
                 if not closed:
-                    self.release()
-
-        else:
-            try:
-                self.acquire()
-                conn = environ[self.key] = self.database.open()
-                try:
-                    return self.application(environ, start_response)
-                finally:
                     conn.close()
-                    del environ[self.key]
-            finally:
+                environ.pop(self.transaction_key, 0)
+                del environ[self.key]
+
+        finally:
+            if not closed:
                 self.release()
 
     def acquire(self):
