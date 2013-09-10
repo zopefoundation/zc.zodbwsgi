@@ -566,7 +566,8 @@ Limiting the number of connections
 
 If you're using a threaded server, one that dedicates a thread to each
 active request, you can limit the number of simultaneous database
-connections by specifying the number with the max_connections option.
+connections by specifying the number with the ``max_connections``
+option.
 
 (This only works for threaded servers because it uses threaded
 semaphores. In the future, support for other locking mechanisms, such
@@ -700,7 +701,7 @@ management yourself.
 If you close ``environ['zodb.connection']``, then it won't be closed
 by ``zc.zodbwsgi``, nor will ``zc.zodbwsgi`` commit or abort the
 transaction it started.  If you're using ``max_connections``, closing
-``environ['zodb.connection']`` will make the connection available fro
+``environ['zodb.connection']`` will make the connection available for
 other requests immediately, rather than waiting for your request to
 complete.
 
@@ -793,7 +794,7 @@ If your application is mostly compute bound, but sometimes calls
 external services, you can take a hybrid approach:
 
 - Increase the number of application threads.
-- Set max_connections to 1.
+- Set ``max_connections`` to 1.
 - In the parts of your application that make external service calls:
 
   - Close ``environ['zodb.connection']``, committing first, if
