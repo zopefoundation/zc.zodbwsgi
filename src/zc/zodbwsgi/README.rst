@@ -1,3 +1,6 @@
+.. image:: https://travis-ci.org/zopefoundation/zc.zodbwsgi.png?branch=master
+   :target: https://travis-ci.org/zopefoundation/zc.zodbwsgi
+
 WSGI Middleware for Managing ZODB Database Connections
 ======================================================
 
