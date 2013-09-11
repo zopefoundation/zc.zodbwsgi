@@ -10,6 +10,10 @@ component:
 - connection management
 - optional transaction management
 - optional request retry on conflict errors (using repoze.retry)
+- optionaly limiting the number of simultaneous database connections
+- applications can take over connection and transaction management on
+  a case-by-case basis, for example to support the occasional
+  long-running request.
 
 It is designed to work with paste deployment and provides a
 "filter_app_factory" entry point, named "main".
@@ -79,6 +83,9 @@ demostorage_manage_header
    processing the rest of the pipeline.
 
    Also note that this only works if the underlying storage is a DemoStorage.
+
+max_connections
+   Maximum number of simultaneous 
 
 .. contents::
 
@@ -554,6 +561,251 @@ returned.
     UserError: Attempting to activate demostorage hooks when one of the
     storages is not a DemoStorage
 
+Limiting the number of connections
+----------------------------------
+
+If you're using a threaded server, one that dedicates a thread to each
+active request, you can limit the number of simultaneous database
+connections by specifying the number with the ``max_connections``
+option.
+
+(This only works for threaded servers because it uses threaded
+semaphores. In the future, support for other locking mechanisms, such
+as gevent Semaphores, may be added. In the mean time, if you're
+inclined to monkey patch, you can replace ``zc.zodbwsgi.Semaphore``
+with an alternative semaphore implementation, like gevent's.)
+
+.. test
+
+    >>> import threading, zc.thread, time
+    >>> events = []
+    >>> def app(environ, start_response):
+    ...     event = threading.Event()
+    ...     events.append(event)
+    ...     event.wait(30)
+    ...     start_response('200 OK', [])
+    ...     return ''
+
+    >>> f = zc.zodbwsgi.make_filter(
+    ...     app, {}, '<zodb>\n<mappingstorage>\n</mappingstorage>\n</zodb>',
+    ...     max_connections='1', retry=0)
+
+    Now, we've said to only allow 1 connection. If we make requests in
+    threads, only one will be active at a time.
+
+    >>> @zc.thread.Thread
+    ... def t1():
+    ...     webtest.TestApp(f).get('/')
+
+    >>> @zc.thread.Thread
+    ... def t2():
+    ...     webtest.TestApp(f).get('/')
+
+    >>> @zc.thread.Thread
+    ... def t3():
+    ...     webtest.TestApp(f).get('/')
+
+    >>> time.sleep(.01)
+
+    Even though there are 3 requests out standing, only 1 has made it
+    to the app:
+
+    >>> len(events)
+    1
+
+    If we complete one, the next will be handled:
+
+    >>> events.pop().set()
+    >>> time.sleep(.01)
+
+    >>> len(events)
+    1
+
+ and so on:
+
+    >>> events.pop().set()
+    >>> time.sleep(.01)
+
+    >>> len(events)
+    1
+
+    >>> events.pop().set()
+    >>> time.sleep(.01)
+
+    >>> len(events)
+    0
+
+    >>> t1.join()
+    >>> t2.join()
+    >>> t3.join()
+
+ Check the no-transaction case:
+
+    >>> f = zc.zodbwsgi.make_filter(
+    ...     app, {}, '<zodb>\n<mappingstorage>\n</mappingstorage>\n</zodb>',
+    ...     max_connections='1', retry=0, transaction_management='False')
+
+    >>> @zc.thread.Thread
+    ... def t1():
+    ...     webtest.TestApp(f).get('/')
+
+    >>> @zc.thread.Thread
+    ... def t2():
+    ...     webtest.TestApp(f).get('/')
+
+    >>> @zc.thread.Thread
+    ... def t3():
+    ...     webtest.TestApp(f).get('/')
+
+    >>> time.sleep(.01)
+    >>> len(events)
+    1
+    >>> events.pop().set()
+    >>> time.sleep(.01)
+    >>> len(events)
+    1
+    >>> events.pop().set()
+    >>> time.sleep(.01)
+    >>> len(events)
+    1
+    >>> events.pop().set()
+    >>> time.sleep(.01)
+    >>> len(events)
+    0
+    >>> t1.join()
+    >>> t2.join()
+    >>> t3.join()
+
+ Verify that we can monkey patch:
+
+    >>> def app(environ, start_response):
+    ...     start_response('200 OK', [])
+    ...     return ''
+    >>> import mock
+    >>> with mock.patch("zc.zodbwsgi.Semaphore") as Semaphore:
+    ...     f = zc.zodbwsgi.make_filter(
+    ...         app, {}, '<zodb>\n<mappingstorage>\n</mappingstorage>\n</zodb>',
+    ...         max_connections='99', retry=0, transaction_management='False')
+    ...     Semaphore.assert_called_with(99)
+    ...     _ = webtest.TestApp(f).get('/')
+    ...     Semaphore.return_value.acquire.assert_called_with()
+    ...     Semaphore.return_value.release.assert_called_with()
+
+Escaping connection and transaction management
+----------------------------------------------
+
+Normally, having connections and transactions managed for you is
+convenient. Sometimes, however, you want to take over transaction
+management yourself.
+
+If you close ``environ['zodb.connection']``, then it won't be closed
+by ``zc.zodbwsgi``, nor will ``zc.zodbwsgi`` commit or abort the
+transaction it started.  If you're using ``max_connections``, closing
+``environ['zodb.connection']`` will make the connection available for
+other requests immediately, rather than waiting for your request to
+complete.
+
+.. test
+
+  Normal (no error):
+
+    >>> import sys
+    >>> def app(environ, start_response):
+    ...     print 'about to close'
+    ...     environ['zodb.connection'].close()
+    ...     print 'closed'
+    ...     start_response('200 OK', [])
+    ...     return ''
+
+    >>> with mock.patch('transaction.manager') as manager:
+    ...     with mock.patch("zc.zodbwsgi.Semaphore") as Semaphore:
+    ...             f = zc.zodbwsgi.make_filter(
+    ...                 app, {},
+    ...                 '<zodb>\n<mappingstorage>\n</mappingstorage>\n</zodb>',
+    ...                 max_connections='99', retry=0)
+    ...             Semaphore.assert_called_with(99)
+    ...             Semaphore.return_value.acquire.side_effect = (
+    ...                 lambda : sys.stdout.write('acquire\n'))
+    ...             Semaphore.return_value.release.side_effect = (
+    ...                 lambda : sys.stdout.write('release\n'))
+    ...             manager.begin.side_effect = (
+    ...                 lambda : sys.stdout.write('begin\n'))
+    ...             manager.commit.side_effect = (
+    ...                 lambda *a: sys.stdout.write('commit\n'))
+    ...             manager.abort.side_effect = (
+    ...                 lambda *a: sys.stdout.write('abort\n'))
+    ...             _ = webtest.TestApp(f).get('/')
+    acquire
+    begin
+    about to close
+    release
+    closed
+
+  Error:
+
+    >>> def app(environ, start_response):
+    ...     print 'about to close'
+    ...     environ['zodb.connection'].close()
+    ...     print 'closed'
+    ...     raise ValueError('Fail')
+
+    >>> with mock.patch('transaction.manager') as manager:
+    ...     with mock.patch("zc.zodbwsgi.Semaphore") as Semaphore:
+    ...             f = zc.zodbwsgi.make_filter(
+    ...                 app, {},
+    ...                 '<zodb>\n<mappingstorage>\n</mappingstorage>\n</zodb>',
+    ...                 max_connections='99', retry=0)
+    ...             Semaphore.assert_called_with(99)
+    ...             Semaphore.return_value.acquire.side_effect = (
+    ...                 lambda : sys.stdout.write('acquire\n'))
+    ...             Semaphore.return_value.release.side_effect = (
+    ...                 lambda : sys.stdout.write('release\n'))
+    ...             manager.begin.side_effect = (
+    ...                 lambda : sys.stdout.write('begin\n'))
+    ...             manager.commit.side_effect = (
+    ...                 lambda *a: sys.stdout.write('commit\n'))
+    ...             manager.abort.side_effect = (
+    ...                 lambda *a: sys.stdout.write('abort\n'))
+    ...             try: webtest.TestApp(f).get('/')
+    ...             except ValueError: pass
+    acquire
+    begin
+    about to close
+    release
+    closed
+
+
+Dealing with the occasional long-running requests
+-------------------------------------------------
+
+Database connections can be pretty expensive resources, especially if
+they have large database caches.  For this reason, when using large
+caches, it's common to limit the number of application threads, to
+limit the number of connections used.  If your application is compute
+bound, you generally want to use one application thread per process
+and a process per processor on the host machine.
+
+If your application itself makes network requests (e.g calling
+external service APIs), so it's network/server bound rather than
+compute bound, you should increase the number of application threads
+and decrease the size of the connection caches to compensate.
+
+If your application is mostly compute bound, but sometimes calls
+external services, you can take a hybrid approach:
+
+- Increase the number of application threads.
+- Set ``max_connections`` to 1.
+- In the parts of your application that make external service calls:
+
+  - Close ``environ['zodb.connection']``, committing first, if
+    necessary.
+  - Make your service calls.
+  - Open and close ZODB connections yourself when you need to use the
+    database.
+
+    If you're using ZEO or relstorage, you might want to create
+    separate database clients for use in these calls, configured with
+    smaller caches.
 
 Changes
 =======
@@ -563,6 +815,16 @@ Changes
 
 - Add an option to use a thread-aware transaction manager, and make it
   the default.
+
+- Added support for occasional long-running requests:
+
+  - You can limit the number of database connections with
+    max_connections.
+
+  - You can take over connection and transaction management to release
+    connections while blocking (typically when calling external
+    services).
+
 
 0.3.0 (2013-03-07)
 ------------------

@@ -12,6 +12,8 @@
 #
 ##############################################################################
 
+from threading import Semaphore
+
 import repoze.retry
 import transaction
 import ZODB.DemoStorage
@@ -23,16 +25,19 @@ to_bool = lambda val: {"true": True, "false": False}[val.lower()]
 
 class DatabaseFilter(object):
 
-    def __init__(self,
-            application,
-            default,
-            configuration,
-            initializer=None,
-            key=None,
-            transaction_management=None,
-            transaction_key=None,
-            thread_transaction_manager=None,
-            demostorage_manage_header=None):
+    def __init__(
+        self,
+        application,
+        default,
+        configuration,
+        initializer=None,
+        key=None,
+        transaction_management=None,
+        transaction_key=None,
+        thread_transaction_manager=None,
+        demostorage_manage_header=None,
+        max_connections=None,
+        ):
 
         self.application = application
         self.database = ZODB.config.databaseFromString(configuration)
@@ -74,6 +79,11 @@ class DatabaseFilter(object):
                         "one of the storages is not a DemoStorage")
         self.demostorage_manage_header = header and header.replace('-', '_')
 
+        if max_connections:
+            sem = Semaphore(int(max_connections))
+            self.acquire = sem.acquire
+            self.release = sem.release
+
     def __call__(self, environ, start_response):
         if self.demostorage_manage_header is not None:
             # XXX See issue #3 regarding current implementation and Jim's
@@ -102,41 +112,74 @@ class DatabaseFilter(object):
                 self.database = databases[self.database.database_name]
                 start_response(status, response_headers)
                 return ['Demostorage popped\n']
-        if self.transaction_management:
-            if self.thread_transaction_manager:
-                tm = transaction.manager
+
+
+        closed = []
+        try:
+            self.acquire()
+            if self.transaction_management:
+                if self.thread_transaction_manager:
+                    tm = transaction.manager
+                else:
+                    tm = transaction.TransactionManager()
+                environ[self.transaction_key] = tm
             else:
-                tm = transaction.TransactionManager()
-            environ[self.transaction_key] = tm
+                tm = None
+
             conn = environ[self.key] = self.database.open(tm)
+
+            @conn.onCloseCallback
+            def on_close():
+                closed.append(1)
+                self.release()
+
             try:
-                with tm:
+                if tm:
+                    try:
+                        tm.begin()
+                        result = self.application(environ, start_response)
+                    except:
+                        if not closed:
+                            tm.abort()
+                        raise
+                    else:
+                        if not closed:
+                            tm.commit()
+                        return result
+
+                else:
                     return self.application(environ, start_response)
+
             finally:
-                conn.close()
-                del environ[self.transaction_key]
+                if not closed:
+                    conn.close()
+                environ.pop(self.transaction_key, 0)
                 del environ[self.key]
 
-        else:
-            conn = environ[self.key] = self.database.open()
-            try:
-                return self.application(environ, start_response)
-            finally:
-                conn.close()
-                del environ[self.key]
+        finally:
+            if not closed:
+                self.release()
 
-def make_filter(app,
-        default,
-        configuration,
-        initializer=None,
-        key=None,
-        transaction_management=None,
-        transaction_key=None,
-        thread_transaction_manager=None,
-        retry=None,
-        max_memory_retry_buffer_size=1<<20,
-        demostorage_manage_header=None):
-    db_app =  DatabaseFilter(app,
+    def acquire(self):
+        pass
+    release = acquire
+
+def make_filter(
+    app,
+    default,
+    configuration,
+    initializer=None,
+    key=None,
+    transaction_management=None,
+    transaction_key=None,
+    thread_transaction_manager=None,
+    retry=None,
+    max_memory_retry_buffer_size=1<<20,
+    demostorage_manage_header=None,
+    max_connections=None,
+    ):
+    db_app =  DatabaseFilter(
+        app,
         default,
         configuration,
         initializer=initializer,
@@ -144,7 +187,8 @@ def make_filter(app,
         transaction_management=transaction_management,
         transaction_key=transaction_key,
         thread_transaction_manager=thread_transaction_manager,
-        demostorage_manage_header=demostorage_manage_header)
+        demostorage_manage_header=demostorage_manage_header,
+        max_connections=max_connections)
     retry = int(retry or default.get('retry', '3'))
     if retry > 0:
         retry_app = repoze.retry.Retry(db_app, tries=retry+1)
