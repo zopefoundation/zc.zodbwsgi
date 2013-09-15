@@ -813,11 +813,8 @@ external services, you can take a hybrid approach:
 Changes
 =======
 
-1.0.0 (unreleased)
+1.0.0 (2013-09-15)
 ------------------
-
-- Add an option to use a thread-aware transaction manager, and make it
-  the default.
 
 - Added support for occasional long-running requests:
 
@@ -827,6 +824,9 @@ Changes
   - You can take over connection and transaction management to release
     connections while blocking (typically when calling external
     services).
+
+- Add an option to use a thread-aware transaction manager, and make it
+  the default.
 
 
 0.3.0 (2013-03-07)
