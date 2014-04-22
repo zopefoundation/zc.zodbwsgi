@@ -84,6 +84,24 @@ class DatabaseFilter(object):
             self.acquire = sem.acquire
             self.release = sem.release
 
+    def push(self):
+        databases = {}
+        for name, db in self.database.databases.items():
+            DB(db.storage.push(),
+               databases=databases,
+               database_name=name)
+        self.database = databases[self.database.database_name]
+        return self.database
+
+    def pop(self):
+        databases = {}
+        for name, db in self.database.databases.items():
+            DB(db.storage.pop(),
+               databases=databases,
+               database_name=name)
+        self.database = databases[self.database.database_name]
+        return self.database
+
     def __call__(self, environ, start_response):
         if self.demostorage_manage_header is not None:
             # XXX See issue #3 regarding current implementation and Jim's
@@ -95,21 +113,11 @@ class DatabaseFilter(object):
             status = '200 OK'
             response_headers = [('Content-type', 'text/plain')]
             if action == 'push':
-                databases = {}
-                for name, db in self.database.databases.items():
-                    DB(db.storage.push(),
-                       databases=databases,
-                       database_name=name)
-                self.database = databases[self.database.database_name]
+                self.push()
                 start_response(status, response_headers)
                 return ['Demostorage pushed\n']
             elif action == 'pop':
-                databases = {}
-                for name, db in self.database.databases.items():
-                    DB(db.storage.pop(),
-                       databases=databases,
-                       database_name=name)
-                self.database = databases[self.database.database_name]
+                self.pop()
                 start_response(status, response_headers)
                 return ['Demostorage popped\n']
 

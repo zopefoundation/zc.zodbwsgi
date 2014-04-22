@@ -459,6 +459,30 @@ immediately without sending it to the end of the pipeline.
     >>> testapp.get('/')
     <200 OK text/html body="{'x': 1}">
 
+If you have access to the middleware object, you can accomplish the
+same thing by calling the push and pop methods, which also return the
+database. This is useful when you're running the server in the test
+process and have Python access:
+
+    >>> db = app.application.push()
+
+Note that app is a repoze.retry, so we have to use .application to get
+the wsgi app.
+
+    >>> with db.transaction() as conn:
+    ...     conn.root.x = 41
+
+    >>> testapp.get('/inc')
+    <200 OK text/html body="{'x': 42}">
+
+    >>> db = app.application.pop()
+    >>> with db.transaction() as conn:
+    ...     print conn.root.x
+    1
+
+    >>> testapp.get('/')
+    <200 OK text/html body="{'x': 1}">
+
 This also works with multiple dbs.
 
   ::
@@ -812,6 +836,9 @@ external services, you can take a hybrid approach:
 
 Changes
 =======
+
+- Provide Python ``push`` and ``pop`` methods for use when testing and
+  when running the server in the test process.
 
 1.0.0 (2013-09-15)
 ------------------
