@@ -837,6 +837,9 @@ external services, you can take a hybrid approach:
 Changes
 =======
 
+1.1.0 (2014-04-22)
+------------------
+
 - Provide Python ``push`` and ``pop`` methods for use when testing and
   when running the server in the test process.
 
