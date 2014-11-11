@@ -88,7 +88,7 @@ demostorage_manage_header
    Also note that this only works if the underlying storage is a DemoStorage.
 
 max_connections
-   Maximum number of simultaneous 
+   Maximum number of simultaneous connections.
 
 .. contents::
 
