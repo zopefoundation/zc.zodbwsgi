@@ -837,6 +837,8 @@ external services, you can take a hybrid approach:
 Changes
 =======
 
+- Added dependencies to reflect imports.
+
 1.1.0 (2014-04-22)
 ------------------
 

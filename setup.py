@@ -13,10 +13,21 @@
 ##############################################################################
 name, version = 'zc.zodbwsgi', '1.0.0'
 
-install_requires = ['setuptools', 'repoze.retry', 'ZConfig', 'ZODB3']
+install_requires = [
+    'setuptools',
+    'repoze.retry',
+    'ZConfig',
+    'ZODB',
+    'transaction',
+    'zope.exceptions',
+    ]
 extras_require = dict(
     test=[
-        'zope.testing', 'manuel', 'PasteDeploy', 'webtest', 'zc.thread',
+        'zope.testing',
+        'manuel',
+        'PasteDeploy',
+        'webtest',
+        'zc.thread',
         'mock'])
 
 entry_points = """
