@@ -11,7 +11,7 @@
 # FOR A PARTICULAR PURPOSE.
 #
 ##############################################################################
-name, version = 'zc.zodbwsgi', '1.0.0'
+name, version = 'zc.zodbwsgi', '1.2.0'
 
 install_requires = [
     'setuptools',
