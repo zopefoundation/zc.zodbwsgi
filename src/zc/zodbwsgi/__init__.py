@@ -145,6 +145,11 @@ class DatabaseFilter(object):
                 if tm:
                     try:
                         tm.begin()
+                        tm.get().note(
+                            "%(REQUEST_METHOD)s "
+                            "%(SCRIPT_NAME)s %(PATH_INFO)s "
+                            "%(QUERY_STRING)s\n"
+                            % environ)
                         result = self.application(environ, start_response)
                     except:
                         if not closed:

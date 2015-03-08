@@ -226,8 +226,11 @@ initializer:
 .. Our application updated transaction meta data when called under
    transaction control.
 
-    >>> app.database.history(conn.root()._p_oid, 1)[0]['description']
-    "path: '/inc'"
+    >>> print app.database.history(conn.root()._p_oid, 1)[0]['description']
+    GET  /inc
+    path: '/inc'
+
+    We also see that zodbwsgi added transaction information.
 
 Disabling transaction management
 --------------------------------
@@ -836,6 +839,8 @@ external services, you can take a hybrid approach:
 
 Changes
 =======
+
+- Record a request summary in transaction meta-data
 
 - Added dependencies to reflect imports.
 
