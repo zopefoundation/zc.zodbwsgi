@@ -840,6 +840,9 @@ external services, you can take a hybrid approach:
 Changes
 =======
 
+1.2.0 (2015-03-08)
+------------------
+
 - Record a request summary in transaction meta-data
 
 - Added dependencies to reflect imports.
