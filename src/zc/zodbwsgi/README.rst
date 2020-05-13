@@ -1,3 +1,6 @@
+.. caution:: 
+
+    This repository has been archived. If you want to work on it please open a ticket in https://github.com/zopefoundation/meta/issues requesting its unarchival.
 
 .. image:: https://travis-ci.org/zopefoundation/zc.zodbwsgi.svg?branch=master
    :target: https://travis-ci.org/zopefoundation/zc.zodbwsgi
